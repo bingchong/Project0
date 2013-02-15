@@ -1,0 +1,117 @@
+# Create your views here.
+from django.shortcuts import render, render_to_response, get_object_or_404
+from django.http import HttpResponse, Http404
+from webservice.models import User
+from django.template import Context, loader, RequestContext
+from django.views.decorators.csrf import csrf_protect, csrf_exempt
+import sys, logging, json
+from testAdditional import TestCases
+import unittest, StringIO
+
+
+#Defined error status
+SUCCESS = 1
+ERR_BAD_CREDENTIALS = -1 
+ERR_USER_EXISTS = -2
+ERR_BAD_USERNAME = -3
+ERR_BAD_PASSWORD = -4
+Possible_Paths = ['/client.html', '/client.css', '/client.js']
+
+# Create your views here.
+@csrf_exempt
+def index(request):
+	#Handle different request methods
+	if request.method == 'POST':
+		if request.path == '/users/login':
+			return login(request)
+		elif request.path == '/users/add':
+			return add(request)
+		elif request.path == '/TESTAPI/resetFixture':
+			return reset() 
+		elif request.path == '/TESTAPI/unitTests':
+			return test()
+		else:
+			return
+	elif request.method =='GET':
+		if request.path == '/TESTAPI/unitTests':
+			return test()
+		#Deals with different files
+		if request.path in Possible_Paths:
+			if request.path.endswith(".html"):
+                		mimeTYPE='text/html'
+            		elif request.path.endswith(".css"):
+                		mimeTYPE='text/css'
+            		elif request.path.endswith(".js"):
+                		mimeTYPE='text/javascript'
+			return render_to_response('admin'+request.path,{"message": 'Please enter your credentials below'},mimetype=mimeTYPE)
+		else:
+			raise Http404
+
+@csrf_exempt
+def login(request):
+	#Loads the input by the user
+	inputData = json.loads(request.body)
+
+	#Get the input data
+	user = inputData['user']
+	password = inputData['password']
+	#If username is empty, throws an error (ERR_BAD_USERNAME)
+	if len(user) == 0:
+		return HttpResponse(json.dumps({'errCode': ERR_BAD_CREDENTIALS}),content_type="application/json")
+
+	#If unable to find the user's data in database, throws an error (BAD_CREDENTIALS)
+	try:
+		#Look up database for same user
+		db_user = User.objects.get(username = user)
+		db_password = db_user.passwd
+	except:
+		return HttpResponse(json.dumps({'errCode': ERR_BAD_CREDENTIALS}),content_type="application/json")
+	#If password matches, login is successful and shows number of logins		
+	if password == db_password:
+		db_user.count += 1
+		db_user.save()
+		return HttpResponse(json.dumps({'errCode': SUCCESS, 'count': db_user.count}),content_type="application/json" )
+	else:
+		return HttpResponse(json.dumps({'errCode': ERR_BAD_CREDENTIALS}),content_type="application/json")
+
+@csrf_exempt
+def add(request):
+	#Loads input by user
+	inputData = json.loads(request.body)
+	user = inputData['user']
+	password = inputData['password']
+	#Throws an error when the username > 128 chars or password > 128 chars 
+	if len(user) == 0 or len(user) > 128:
+		return HttpResponse(json.dumps({'errCode': ERR_BAD_USERNAME}),content_type="application/json")
+	if len(password) > 128:
+		return HttpResponse(json.dumps({'errCode': ERR_BAD_PASSWORD}),content_type="application/json")
+	try:
+		#Look up database for same user
+		db_user = User.objects.get(username = user)
+	except:
+		#If user is not in database, add in the new user	
+		newUser = User(username=user, passwd=password, count=1)
+		newUser.save()
+		return HttpResponse(json.dumps({'errCode': SUCCESS, 'count': 1}), content_type='application/json')
+	#Throws an error if there already exists a user in the database
+	return HttpResponse(json.dumps({'errCode': ERR_USER_EXISTS}), content_type='application/json')
+
+#Reset the datatable
+@csrf_exempt
+def reset():
+	User.objects.all().delete()
+	return HttpResponse(json.dumps({'errCode': SUCCESS}), content_type='application/json')
+
+#Run the unit and functional tests
+@csrf_exempt
+def test():
+		# We run the unit tests and collect the output into a temporary file
+		# Conveniently, we have a Makefile target for all unit_tests
+		# There are better ways of doing this in Python, but this is a more portable example
+	buff = StringIO.StringIO()
+	suite = unittest.TestLoader().loadTestsFromTestCase(TestCases)
+	result = unittest.TextTestRunner(stream = buff, verbosity = 2).run(suite)
+
+	rv = {"totalTests": result.testsRun, "nrFailed": len(result.failures), "output": buff.getvalue()}
+	return HttpResponse(json.dumps(rv), content_type = "application/json")
+	                        
