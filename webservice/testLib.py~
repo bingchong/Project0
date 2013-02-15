@@ -41,8 +41,7 @@ class RestTestCase(unittest.TestCase):
             body = json.dumps(data)
 
         try:
-	    print "Hello*************"
-	    print method,url,body,headers
+	    
             self.conn.request(method, url, body, headers)
         except Exception, e:
             if str(e).find("Connection refused") >= 0:
