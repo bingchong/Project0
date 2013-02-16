@@ -5,7 +5,7 @@ when you run "manage.py test".
 Replace this with more appropriate tests for your application.
 """
 
-from django.test import TestCase
+
 import os, sys
 from os.path import abspath, dirname
 project_dir = abspath(dirname(dirname(__file__)))
